@@ -32,6 +32,7 @@ public sealed class SqidsEncoder
 
 #if NET8_0_OR_GREATER
 	private readonly SearchValues<char> _digitValues = SearchValues.Create("0123456789");
+	private readonly SearchValues<char> _alphabetValues;
 #endif
 
 #if NET7_0_OR_GREATER
@@ -124,6 +125,9 @@ public sealed class SqidsEncoder
 		_blockList = blockList.ToArray(); // NOTE: Arrays are faster to iterate than HashSets, so we construct an array here.
 
 		_alphabet = options.Alphabet.ToCharArray();
+#if NET8_0_OR_GREATER
+		_alphabetValues = SearchValues.Create(_alphabet);
+#endif
 		ConsistentShuffle(_alphabet);
 	}
 
@@ -316,12 +320,16 @@ public sealed class SqidsEncoder
 			return Array.Empty<int>();
 #endif
 
+#if NET8_0_OR_GREATER
+		foreach (var c in id)
+		{
+			if (!_alphabetValues.Contains(c))
+				return [];
+		}
+#else
 		foreach (char c in id)
 			if (!_alphabet.Contains(c))
-#if NET7_0_OR_GREATER
-				return Array.Empty<T>();
-#else
-				return Array.Empty<int>();
+				return [];
 #endif
 
 		var alphabetSpan = _alphabet.AsSpan();
