@@ -239,52 +239,59 @@ public sealed class SqidsEncoder
 		char prefix = alphabetTemp[0];
 		alphabetTemp.Reverse();
 
-		var builder = new StringBuilder(); // TODO: pool a la Hashids.net?
-		builder.Append(prefix);
-
-		for (int i = 0; i < numbers.Length; i++)
+		var builder = StringBuilderPool.Instance.Rent();
+		try
 		{
-			var number = numbers[i];
-			var alphabetWithoutSeparator = alphabetTemp[1..]; // NOTE: Excludes the first character — which is the separator
-			var tempBuffer = ArrayPool<char>.Shared.Rent(256);
+			builder.Append(prefix);
 
-			try
+			for (int i = 0; i < numbers.Length; i++)
 			{
-				var encodedNumber = ToId(number, alphabetWithoutSeparator, tempBuffer);
-				builder.Append(encodedNumber);
+				var number = numbers[i];
+				var alphabetWithoutSeparator = alphabetTemp[1..]; // NOTE: Excludes the first character — which is the separator
+				var tempBuffer = ArrayPool<char>.Shared.Rent(256);
 
-				if (i >= numbers.Length - 1) // NOTE: If the last one
-					continue;
+				try
+				{
+					var encodedNumber = ToId(number, alphabetWithoutSeparator, tempBuffer);
+					builder.Append(encodedNumber);
 
+					if (i >= numbers.Length - 1) // NOTE: If the last one
+						continue;
+
+					char separator = alphabetTemp[0];
+					builder.Append(separator);
+					ConsistentShuffle(alphabetTemp);
+				}
+				finally
+				{
+					ArrayPool<char>.Shared.Return(tempBuffer);
+				}
+			}
+
+			if (builder.Length < _minLength)
+			{
 				char separator = alphabetTemp[0];
 				builder.Append(separator);
-				ConsistentShuffle(alphabetTemp);
-			}
-			finally
-			{
-				ArrayPool<char>.Shared.Return(tempBuffer);
-			}
-		}
 
-		if (builder.Length < _minLength)
+				while (builder.Length < _minLength)
+				{
+					ConsistentShuffle(alphabetTemp);
+					int toIndex = Math.Min(_minLength - builder.Length, _alphabet.Length);
+					builder.Append(alphabetTemp[..toIndex]);
+				}
+			}
+
+			string result = builder.ToString();
+
+			if (IsBlockedId(result.AsSpan()))
+				result = Encode(numbers, increment + 1);
+
+			return result;
+		}
+		finally
 		{
-			char separator = alphabetTemp[0];
-			builder.Append(separator);
-
-			while (builder.Length < _minLength)
-			{
-				ConsistentShuffle(alphabetTemp);
-				int toIndex = Math.Min(_minLength - builder.Length, _alphabet.Length);
-				builder.Append(alphabetTemp[..toIndex]);
-			}
+			StringBuilderPool.Instance.Return(builder);
 		}
-
-		string result = builder.ToString();
-
-		if (IsBlockedId(result.AsSpan()))
-			result = Encode(numbers, increment + 1);
-
-		return result;
 	}
 
 	/// <summary>
