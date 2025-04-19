@@ -1,3 +1,4 @@
+using System.Buffers;
 #if NET7_0_OR_GREATER
 using System.Numerics;
 #endif
@@ -241,15 +242,24 @@ public sealed class SqidsEncoder
 		{
 			var number = numbers[i];
 			var alphabetWithoutSeparator = alphabetTemp[1..]; // NOTE: Excludes the first character — which is the separator
-			var encodedNumber = ToId(number, alphabetWithoutSeparator);
-			builder.Append(encodedNumber);
+			var tempBuffer = ArrayPool<char>.Shared.Rent(256);
 
-			if (i >= numbers.Length - 1) // NOTE: If the last one
-				continue;
+			try
+			{
+				var encodedNumber = ToId(number, alphabetWithoutSeparator, tempBuffer);
+				builder.Append(encodedNumber);
 
-			char separator = alphabetTemp[0];
-			builder.Append(separator);
-			ConsistentShuffle(alphabetTemp);
+				if (i >= numbers.Length - 1) // NOTE: If the last one
+					continue;
+
+				char separator = alphabetTemp[0];
+				builder.Append(separator);
+				ConsistentShuffle(alphabetTemp);
+			}
+			finally
+			{
+				ArrayPool<char>.Shared.Return(tempBuffer);
+			}
 		}
 
 		if (builder.Length < _minLength)
@@ -393,29 +403,32 @@ public sealed class SqidsEncoder
 	}
 
 #if NET7_0_OR_GREATER
-	private static ReadOnlySpan<char> ToId(T num, ReadOnlySpan<char> alphabet)
+	private static ReadOnlySpan<char> ToId(T num, ReadOnlySpan<char> alphabet, Span<char> buffer)
 #else
-	private static ReadOnlySpan<char> ToId(int num, ReadOnlySpan<char> alphabet)
+	private static ReadOnlySpan<char> ToId(int num, ReadOnlySpan<char> alphabet, Span<char> buffer)
 #endif
 	{
-		var id = new StringBuilder();
+		var baseLength = alphabet.Length;
+
 		var result = num;
+		var index = buffer.Length;
 
 #if NET7_0_OR_GREATER
 		do
 		{
-			id.Insert(0, alphabet[int.CreateChecked(result % T.CreateChecked(alphabet.Length))]);
-			result /= T.CreateChecked(alphabet.Length);
+			index--;
+			buffer[index] = alphabet[int.CreateChecked(result % T.CreateChecked(baseLength))];
+			result /= T.CreateChecked(baseLength);
 		} while (result > T.Zero);
 #else
 		do
 		{
-			id.Insert(0, alphabet[result % alphabet.Length]);
-			result /= alphabet.Length;
+			index--;
+			buffer[index] = alphabet[result % baseLength];
+			result /= baseLength;
 		} while (result > 0);
 #endif
-
-		return id.ToString().AsSpan(); // TODO: possibly avoid creating a string
+		return buffer.Slice(index, buffer.Length - index);
 	}
 
 #if NET7_0_OR_GREATER
