@@ -30,6 +30,10 @@ public sealed class SqidsEncoder
 	private readonly int _minLength;
 	private readonly string[] _blockList;
 
+#if NET8_0_OR_GREATER
+	private readonly SearchValues<char> _digitValues = SearchValues.Create("0123456789");
+#endif
+
 #if NET7_0_OR_GREATER
 	/// <summary>
 	/// Initializes a new instance of <see cref="SqidsEncoder{T}" /> with the default options.
@@ -380,7 +384,7 @@ public sealed class SqidsEncoder
 				id.Equals(word.AsSpan(), StringComparison.OrdinalIgnoreCase))
 				return true;
 
-			if (word.Any(char.IsDigit) &&
+			if (ContainsDigit(word.AsSpan()) &&
 				(id.StartsWith(word.AsSpan(), StringComparison.OrdinalIgnoreCase) ||
 				 id.EndsWith(word.AsSpan(), StringComparison.OrdinalIgnoreCase)))
 				return true;
@@ -447,5 +451,20 @@ public sealed class SqidsEncoder
 			result = result * alphabet.Length + alphabet.IndexOf(character);
 #endif
 		return result;
+	}
+
+	private bool ContainsDigit(ReadOnlySpan<char> value)
+	{
+#if NET8_0_OR_GREATER
+		return value.ContainsAny(_digitValues);
+#else
+		for (var i = 0; i < value.Length; i++)
+		{
+			if (char.IsDigit(value[i]))
+				return true;
+		}
+
+		return false;
+#endif
 	}
 }
